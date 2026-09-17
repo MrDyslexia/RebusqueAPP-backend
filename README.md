@@ -46,10 +46,15 @@ Para desarrollo fuera de contenedor, `DATABASE_URL` debe apuntar a `127.0.0.1:54
 ## Contenedor
 
 ```bash
-podman-compose up -d --build
+bun run deploy   # build + --force-recreate + espera healthcheck (ver scripts/deploy.sh)
 podman-compose logs -f backend
 curl http://127.0.0.1:5002/health
 ```
+
+**No uses `podman-compose up -d --build` a secas**: reconstruye la imagen pero
+no recrea el contenedor si compose no detecta cambios en `docker-compose.yml`
+— el contenedor viejo sigue sirviendo código stale. `bun run deploy` ya
+incluye `--force-recreate`.
 
 `DATABASE_URL` en `.env` (el que usa el contenedor) debe apuntar a `rebusque-db:5432`
 (nombre del contenedor de Postgres, resuelto vía DNS de la red `rebusque-net`).
@@ -103,6 +108,14 @@ Es idempotente: si ya existe algún administrador, no hace nada.
 - `PATCH /usuarios/:id/email` — solo `administrador`. `{ newEmail }`. Cambia el
   correo de cualquier otro usuario sin pedirle su contraseña.
 - `GET /ws?token=` — WebSocket real de sincronización (ver sección propia mas abajo).
+- `GET /encomiendas/resumen-diario` — solo `conductor` (403 para otros roles).
+  Siempre resume al conductor autenticado, sin parámetro. `asignadasHoy` /
+  `entregadasHoy` cuentan eventos de `encomienda_estado_historial` (no
+  encomiendas distintas) dentro del día calendario en `America/Santiago`
+  (`src/lib/timezone.ts`, sin libreria de fechas); `pendientes` es el conteo
+  actual (sin filtro de fecha) en estados `asignada`/`en_ruta`/`retirado`/`en_reparto`.
+  Detalle completo en `resumenDiarioConductor` (`encomiendas.service.ts`) y en
+  el vault `backend.md`.
 
 ## Encomiendas
 
