@@ -8,7 +8,8 @@
     "start": "bun run src/server.ts",
     "db:pull": "drizzle-kit pull && bun run scripts/fix-bytea.ts",
     "seed:admin": "bun run scripts/seed-admin.ts",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "deploy": "bash scripts/deploy.sh"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
