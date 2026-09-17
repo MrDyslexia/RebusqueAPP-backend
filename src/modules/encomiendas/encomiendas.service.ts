@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { and, desc, eq, sql, getTableColumns } from "drizzle-orm";
+import { and, desc, eq, gte, inArray, lt, sql, getTableColumns } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import {
   encomiendas,
@@ -13,6 +13,7 @@ import { hashPassword } from "../../lib/security.js";
 import { generateNumeroSeguimiento, generateCodigoQr } from "../../lib/ids.js";
 import { AppError, Errors } from "../../lib/errors.js";
 import { broadcastEncomiendaActualizada } from "../../realtime/broadcaster.js";
+import { rangoDelDia, fechaEnZona, TIMEZONE } from "../../lib/timezone.js";
 import type { AuthUser } from "../../plugins/auth.js";
 import type {
   CrearEncomiendaBody,
@@ -235,6 +236,91 @@ export async function listarEncomiendas(actor: AuthUser, estado?: Estado) {
     .from(encomiendas)
     .where(condiciones.length > 0 ? and(...condiciones) : undefined)
     .orderBy(desc(encomiendas.createdAt));
+}
+
+// Estados que representan trabajo activo/no resuelto para un conductor:
+// ya tiene la encomienda a su cargo pero todavia no la entrega. Excluye
+// "en_sucursal" (espera reasignacion, no es responsabilidad actual suya
+// hasta que se la vuelvan a asignar) y "procesando" (todavia sin conductor).
+const ESTADOS_PENDIENTES_CONDUCTOR = ["asignada", "en_ruta", "retirado", "en_reparto"] as const;
+
+/**
+ * Resumen diario del conductor autenticado: asignadas hoy, entregadas hoy,
+ * y pendientes (trabajo activo actual, sin filtro de fecha).
+ *
+ * Contrato (ver backend.md del vault para el detalle completo):
+ * - "Hoy" es el dia calendario en America/Santiago (ver lib/timezone.ts),
+ *   nunca UTC ni la zona del cliente que llama.
+ * - asignadasHoy/entregadasHoy cuentan EVENTOS de
+ *   `encomienda_estado_historial` (no encomiendas distintas): si una
+ *   encomienda fue asignada al mismo conductor mas de una vez en el dia
+ *   (ej. reintento tras "en_sucursal"), cuenta una vez por cada evento.
+ * - Se filtra por el `conductor_asignado_id` ACTUAL de la encomienda, no
+ *   por quien la tenia asignada en el momento del evento historico: si fue
+ *   reasignada a otro conductor despues, el evento pasado ya no cuenta para
+ *   nadie de forma retroactiva (limitacion aceptada del MVP; el historial
+ *   no guarda "asignada a quien" por evento, solo el estado y quien hizo el
+ *   cambio).
+ * - entregadasHoy usa el historial (evento "entregada"), no
+ *   `encomiendas.updated_at`: ese campo se pisa con acciones que no cambian
+ *   el estado (ej. `PATCH /encomiendas/:id/pago`), asi que no sirve para
+ *   saber cuando ocurrio la entrega.
+ * - pendientes es el conteo ACTUAL (no tiene "hoy"): trabajo activo del
+ *   conductor en este momento, independiente de cuando se asigno.
+ */
+export async function resumenDiarioConductor(actor: AuthUser) {
+  const { inicio, fin } = rangoDelDia();
+  const inicioIso = inicio.toISOString();
+  const finIso = fin.toISOString();
+
+  const contarEventosHoy = async (estado: Estado) => {
+    const [fila] = await db
+      .select({ total: sql<number>`count(*)`.mapWith(Number) })
+      .from(encomiendaEstadoHistorial)
+      .innerJoin(encomiendas, eq(encomiendaEstadoHistorial.encomiendaId, encomiendas.id))
+      .where(
+        and(
+          eq(encomiendaEstadoHistorial.estado, estado),
+          eq(encomiendas.conductorAsignadoId, actor.id),
+          gte(encomiendaEstadoHistorial.createdAt, inicioIso),
+          lt(encomiendaEstadoHistorial.createdAt, finIso)
+        )
+      );
+    return fila?.total ?? 0;
+  };
+
+  const [asignadasHoy, entregadasHoy, pendientesFilas] = await Promise.all([
+    contarEventosHoy("asignada"),
+    contarEventosHoy("entregada"),
+    db
+      .select({ estado: encomiendas.estado, total: sql<number>`count(*)`.mapWith(Number) })
+      .from(encomiendas)
+      .where(
+        and(eq(encomiendas.conductorAsignadoId, actor.id), inArray(encomiendas.estado, ESTADOS_PENDIENTES_CONDUCTOR))
+      )
+      .groupBy(encomiendas.estado),
+  ]);
+
+  const porEstado: Record<(typeof ESTADOS_PENDIENTES_CONDUCTOR)[number], number> = {
+    asignada: 0,
+    en_ruta: 0,
+    retirado: 0,
+    en_reparto: 0,
+  };
+  let totalPendientes = 0;
+  for (const fila of pendientesFilas) {
+    const estado = fila.estado as (typeof ESTADOS_PENDIENTES_CONDUCTOR)[number];
+    porEstado[estado] = fila.total;
+    totalPendientes += fila.total;
+  }
+
+  return {
+    fecha: fechaEnZona(),
+    zonaHoraria: TIMEZONE,
+    asignadasHoy,
+    entregadasHoy,
+    pendientes: { total: totalPendientes, porEstado },
+  };
 }
 
 async function transicionar(

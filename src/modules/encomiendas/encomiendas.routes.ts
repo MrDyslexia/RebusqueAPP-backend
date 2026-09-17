@@ -15,6 +15,7 @@ import {
   obtenerEncomienda,
   obtenerEncomiendaPorQr,
   listarEncomiendas,
+  resumenDiarioConductor,
   asignarConductor,
   recoger,
   decidirPostRetiro,
@@ -44,6 +45,18 @@ export async function encomiendasRoutes(app: FastifyInstance) {
     const lista = await listarEncomiendas(request.user!, query.estado);
     return reply.send({ encomiendas: lista });
   });
+
+  // Resumen diario del conductor autenticado (asignadas/entregadas hoy en
+  // America/Santiago, pendientes actuales). Ver contrato completo en
+  // encomiendas.service.ts:resumenDiarioConductor y backend.md del vault.
+  app.get(
+    "/encomiendas/resumen-diario",
+    { preHandler: [app.authenticate, app.requireRole("conductor")] },
+    async (request, reply) => {
+      const resumen = await resumenDiarioConductor(request.user!);
+      return reply.send(resumen);
+    }
+  );
 
   app.get("/encomiendas/qr/:codigoQr", { preHandler: app.authenticate }, async (request, reply) => {
     const { codigoQr } = z.object({ codigoQr: z.string().min(1).max(128) }).parse(request.params);
