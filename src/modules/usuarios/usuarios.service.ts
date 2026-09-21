@@ -1,4 +1,4 @@
-import { or, eq, ne, and, isNull } from "drizzle-orm";
+import { or, eq, ne, and, isNull, asc } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { usuarios, sesiones } from "../../db/schema.js";
 import { normalizeRut } from "../../lib/rut.js";
@@ -89,8 +89,11 @@ export async function listarUsuarios(rol?: Rol) {
     createdAt: usuarios.createdAt,
   };
 
-  if (rol) return db.select(columnas).from(usuarios).where(eq(usuarios.rol, rol));
-  return db.select(columnas).from(usuarios);
+  // PostgreSQL no garantiza orden sin ORDER BY. Una mutacion como el toggle
+  // de seguimiento fuerza un refetch; sin orden estable la misma fila podia
+  // reaparecer en otra posicion aunque ningun dato visual de la tabla cambiara.
+  if (rol) return db.select(columnas).from(usuarios).where(eq(usuarios.rol, rol)).orderBy(asc(usuarios.id));
+  return db.select(columnas).from(usuarios).orderBy(asc(usuarios.id));
 }
 
 function requireAdmin(actor: AuthUser) {
