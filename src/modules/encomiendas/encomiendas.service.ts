@@ -238,6 +238,17 @@ export async function listarEncomiendas(actor: AuthUser, estado?: Estado) {
     .orderBy(desc(encomiendas.createdAt));
 }
 
+// Historial operativo de un cliente/remitente. Se expone desde el modulo de
+// usuarios porque la pantalla parte en una fila de cliente, pero conserva la
+// seleccion HTTP de encomiendas para no duplicar (ni exponer foto_entrega).
+export async function listarEncomiendasPorRemitente(remitenteId: number) {
+  return db
+    .select(seleccionEncomienda())
+    .from(encomiendas)
+    .where(eq(encomiendas.remitenteId, remitenteId))
+    .orderBy(desc(encomiendas.createdAt));
+}
+
 // Estados que representan trabajo activo/no resuelto para un conductor:
 // ya tiene la encomienda a su cargo pero todavia no la entrega. Excluye
 // "en_sucursal" (espera reasignacion, no es responsabilidad actual suya

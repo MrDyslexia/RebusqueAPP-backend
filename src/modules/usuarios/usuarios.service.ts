@@ -5,6 +5,7 @@ import { normalizeRut } from "../../lib/rut.js";
 import { hashPassword } from "../../lib/security.js";
 import { Errors, AppError } from "../../lib/errors.js";
 import type { AuthUser } from "../../plugins/auth.js";
+import { listarEncomiendasPorRemitente } from "../encomiendas/encomiendas.service.js";
 import type { CrearUsuarioBody, rolUsuarioSchema } from "./usuarios.schemas.js";
 import type { z } from "zod";
 
@@ -94,6 +95,25 @@ export async function listarUsuarios(rol?: Rol) {
   // reaparecer en otra posicion aunque ningun dato visual de la tabla cambiara.
   if (rol) return db.select(columnas).from(usuarios).where(eq(usuarios.rol, rol)).orderBy(asc(usuarios.id));
   return db.select(columnas).from(usuarios).orderBy(asc(usuarios.id));
+}
+
+// El historial se define por remitente_id: un cliente puede ser quien envía
+// muchas encomiendas, pero no necesariamente el destinatario de una ajena.
+// Validar el rol evita que la ruta se use por accidente como historial de un
+// trabajador, que no tiene el mismo significado operativo.
+export async function listarEncomiendasDeCliente(usuarioId: number) {
+  const [usuario] = await db
+    .select({ id: usuarios.id, rol: usuarios.rol })
+    .from(usuarios)
+    .where(eq(usuarios.id, usuarioId))
+    .limit(1);
+
+  if (!usuario) throw Errors.notFound("Usuario");
+  if (usuario.rol !== "cliente") {
+    throw new AppError(400, "usuario_no_es_cliente", "El historial de encomiendas solo aplica a clientes");
+  }
+
+  return listarEncomiendasPorRemitente(usuario.id);
 }
 
 function requireAdmin(actor: AuthUser) {

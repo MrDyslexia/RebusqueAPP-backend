@@ -12,6 +12,7 @@ import {
   forzarResetPassword,
   cambiarEmailDeUsuario,
   listarUsuarios,
+  listarEncomiendasDeCliente,
   actualizarAccesoSeguimiento,
 } from "./usuarios.service.js";
 
@@ -35,6 +36,16 @@ export async function usuariosRoutes(app: FastifyInstance) {
       const body = crearUsuarioBodySchema.parse(request.body);
       const usuario = await crearUsuario(request.user!, body);
       return reply.status(201).send({ usuario });
+    }
+  );
+
+  app.get(
+    "/usuarios/:id/encomiendas",
+    { preHandler: [app.authenticate, app.requireRole("administrador", "ejecutivo")] },
+    async (request, reply) => {
+      const { id } = idParamSchema.parse(request.params);
+      const encomiendas = await listarEncomiendasDeCliente(id);
+      return reply.send({ encomiendas });
     }
   );
 
