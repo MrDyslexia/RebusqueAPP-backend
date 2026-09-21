@@ -4,6 +4,7 @@ import {
   crearUsuarioBodySchema,
   forzarResetPasswordBodySchema,
   cambiarEmailUsuarioBodySchema,
+  actualizarDatosUsuarioBodySchema,
   listarUsuariosQuerySchema,
   actualizarAccesoSeguimientoBodySchema,
 } from "./usuarios.schemas.js";
@@ -11,8 +12,10 @@ import {
   crearUsuario,
   forzarResetPassword,
   cambiarEmailDeUsuario,
+  actualizarDatosUsuario,
   listarUsuarios,
   listarEncomiendasDeCliente,
+  listarEncomiendasCreadasPorEjecutivo,
   actualizarAccesoSeguimiento,
 } from "./usuarios.service.js";
 
@@ -26,6 +29,16 @@ export async function usuariosRoutes(app: FastifyInstance) {
       const query = listarUsuariosQuerySchema.parse(request.query);
       const lista = await listarUsuarios(query.rol);
       return reply.send({ usuarios: lista });
+    }
+  );
+
+  app.get(
+    "/usuarios/:id/encomiendas-creadas",
+    { preHandler: [app.authenticate, app.requireRole("administrador", "ejecutivo")] },
+    async (request, reply) => {
+      const { id } = idParamSchema.parse(request.params);
+      const encomiendas = await listarEncomiendasCreadasPorEjecutivo(id);
+      return reply.send({ encomiendas });
     }
   );
 
@@ -68,6 +81,17 @@ export async function usuariosRoutes(app: FastifyInstance) {
       const body = cambiarEmailUsuarioBodySchema.parse(request.body);
       const result = await cambiarEmailDeUsuario(request.user!, id, body.newEmail);
       return reply.send(result);
+    }
+  );
+
+  app.patch(
+    "/usuarios/:id/datos",
+    { preHandler: [app.authenticate, app.requireRole("administrador")] },
+    async (request, reply) => {
+      const { id } = idParamSchema.parse(request.params);
+      const body = actualizarDatosUsuarioBodySchema.parse(request.body);
+      const usuario = await actualizarDatosUsuario(request.user!, id, body);
+      return reply.send({ usuario });
     }
   );
 

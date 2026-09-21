@@ -5,7 +5,7 @@ import { normalizeRut } from "../../lib/rut.js";
 import { hashPassword } from "../../lib/security.js";
 import { Errors, AppError } from "../../lib/errors.js";
 import type { AuthUser } from "../../plugins/auth.js";
-import { listarEncomiendasPorRemitente } from "../encomiendas/encomiendas.service.js";
+import { listarEncomiendasPorCreador, listarEncomiendasPorRemitente } from "../encomiendas/encomiendas.service.js";
 import type { CrearUsuarioBody, rolUsuarioSchema } from "./usuarios.schemas.js";
 import type { z } from "zod";
 
@@ -116,6 +116,21 @@ export async function listarEncomiendasDeCliente(usuarioId: number) {
   return listarEncomiendasPorRemitente(usuario.id);
 }
 
+export async function listarEncomiendasCreadasPorEjecutivo(usuarioId: number) {
+  const [usuario] = await db
+    .select({ id: usuarios.id, rol: usuarios.rol })
+    .from(usuarios)
+    .where(eq(usuarios.id, usuarioId))
+    .limit(1);
+
+  if (!usuario) throw Errors.notFound("Usuario");
+  if (usuario.rol !== "ejecutivo") {
+    throw new AppError(400, "usuario_no_es_ejecutivo", "El historial de creación solo aplica a ejecutivos");
+  }
+
+  return listarEncomiendasPorCreador(usuario.id);
+}
+
 function requireAdmin(actor: AuthUser) {
   if (actor.rol !== "administrador") {
     throw Errors.forbidden("Solo administrador puede realizar esta accion");
@@ -170,6 +185,50 @@ export async function cambiarEmailDeUsuario(actor: AuthUser, usuarioId: number, 
     .where(eq(usuarios.id, usuarioId));
 
   return { id: usuarioId, email: newEmail };
+}
+
+export async function actualizarDatosUsuario(
+  actor: AuthUser,
+  usuarioId: number,
+  datos: {
+    email: string;
+    primerNombre: string;
+    segundoNombre: string;
+    primerApellido: string;
+    segundoApellido: string;
+  }
+) {
+  requireAdmin(actor);
+
+  const [usuario] = await db.select({ id: usuarios.id }).from(usuarios).where(eq(usuarios.id, usuarioId)).limit(1);
+  if (!usuario) throw Errors.notFound("Usuario");
+
+  const [enUso] = await db
+    .select({ id: usuarios.id })
+    .from(usuarios)
+    .where(and(eq(usuarios.email, datos.email), ne(usuarios.id, usuarioId)))
+    .limit(1);
+  if (enUso) throw Errors.emailEnUso();
+
+  const [actualizado] = await db
+    .update(usuarios)
+    .set({ ...datos, updatedAt: new Date().toISOString() })
+    .where(eq(usuarios.id, usuarioId))
+    .returning({
+      id: usuarios.id,
+      rut: usuarios.rut,
+      email: usuarios.email,
+      primerNombre: usuarios.primerNombre,
+      segundoNombre: usuarios.segundoNombre,
+      primerApellido: usuarios.primerApellido,
+      segundoApellido: usuarios.segundoApellido,
+      rol: usuarios.rol,
+      activo: usuarios.activo,
+      accesoSeguimientoBloqueado: usuarios.accesoSeguimientoBloqueado,
+      createdAt: usuarios.createdAt,
+    });
+
+  return actualizado!;
 }
 
 // "administrador puede bloquear el acceso de los ejecutivos al seguimiento

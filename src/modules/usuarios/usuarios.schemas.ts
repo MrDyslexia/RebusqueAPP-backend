@@ -29,6 +29,17 @@ export const cambiarEmailUsuarioBodySchema = z.object({
   newEmail: z.string().email(),
 });
 
+// RUT y rol no participan: el primero es identificador persistente y el
+// segundo modifica permisos. Este endpoint solo actualiza datos personales y
+// de contacto desde el detalle administrativo de equipo.
+export const actualizarDatosUsuarioBodySchema = z.object({
+  email: z.string().email(),
+  primerNombre: z.string().trim().min(1).max(80),
+  segundoNombre: z.string().trim().min(1).max(80),
+  primerApellido: z.string().trim().min(1).max(80),
+  segundoApellido: z.string().trim().min(1).max(80),
+});
+
 export const listarUsuariosQuerySchema = z.object({
   rol: rolUsuarioSchema.optional(),
 });

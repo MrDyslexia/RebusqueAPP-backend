@@ -249,6 +249,16 @@ export async function listarEncomiendasPorRemitente(remitenteId: number) {
     .orderBy(desc(encomiendas.createdAt));
 }
 
+// Historial operativo de un ejecutivo: son las encomiendas que creó desde el
+// panel, no las que eventualmente pueda tener asignadas como conductor.
+export async function listarEncomiendasPorCreador(creadoPor: number) {
+  return db
+    .select(seleccionEncomienda())
+    .from(encomiendas)
+    .where(eq(encomiendas.creadoPor, creadoPor))
+    .orderBy(desc(encomiendas.createdAt));
+}
+
 // Estados que representan trabajo activo/no resuelto para un conductor:
 // ya tiene la encomienda a su cargo pero todavia no la entrega. Excluye
 // "en_sucursal" (espera reasignacion, no es responsabilidad actual suya
