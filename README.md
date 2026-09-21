@@ -20,12 +20,27 @@ Cuando cambie `base-datos/init/001_esquema.sql` (y se reaplique en la DB):
 bun run db:pull
 ```
 
-Esto corre `drizzle-kit pull` contra `DATABASE_URL` y regenera esos dos archivos.
+**Corre siempre en el host** (`scripts/db-pull.ts`), nunca dentro del
+contenedor `rebusque-backend`.
+
+**Gotcha resuelto (17/18-sep-2026)**: `.env` trae `DATABASE_URL` apuntando a
+`rebusque-db` (hostname de la red Podman `rebusque-net`, correcto para
+`env_file:` en `docker-compose.yml`), pero ese hostname no resuelve desde el
+shell del host — `drizzle-kit pull` corrido directo ahí fallaba en silencio
+(`0 tables fetching`, exit code 1 sin mensaje). `scripts/db-pull.ts` fuerza
+`127.0.0.1` como host **en el `env` que le pasa al subproceso** de
+`drizzle-kit` (no confía en el auto-load nativo de `.env`/`.env.local` de
+Bun): se comprobó que ese auto-load funciona en invocaciones directas
+(`bun -e`, `bun run --watch src/server.ts`) pero **no se propaga de forma
+confiable a `bunx <paquete>`** — con `.env.local` presente, `bunx drizzle-kit
+pull` seguía fallando; solo funcionaba con `export DATABASE_URL=...` explícito
+en el shell antes de invocarlo. Por eso el override se hace en código, no
+dependiendo de archivos `.env*`.
 
 **Gotcha conocido**: `drizzle-kit pull` (v0.31) no mapea columnas `bytea` de
 Postgres (`encomiendas.foto_entrega`, `reportes_entrega_fallida.foto_reporte`)
 a un tipo válido — genera un placeholder `unknown(...)` que rompe en runtime.
-`bun run db:pull` ya encadena `scripts/fix-bytea.ts`, que parchea esas dos
+`scripts/db-pull.ts` ya encadena `scripts/fix-bytea.ts`, que parchea esas dos
 columnas para usar el `customType` de `src/db/custom-types.ts`. Si agregás
 columnas `bytea` nuevas, el script las detecta automáticamente por regex.
 
@@ -33,15 +48,20 @@ columnas `bytea` nuevas, el script las detecta automáticamente por regex.
 
 ```bash
 cp .env.example .env
-# completar DATABASE_URL, JWT_SECRET
+# completar DATABASE_URL (con host rebusque-db), JWT_SECRET
 
 bun install
 bun run dev   # watch mode, puerto 5002
 ```
 
 Requiere que `base-datos` esté corriendo y accesible (ver `../base-datos/README.md`).
-Para desarrollo fuera de contenedor, `DATABASE_URL` debe apuntar a `127.0.0.1:5432`
-(no a `rebusque-db`, que solo resuelve dentro de la red Podman).
+
+`.env` está pensado para el contenedor (`env_file:` en `docker-compose.yml`,
+host `rebusque-db`). Para correr `bun run dev` **fuera** de contenedor, creá
+`.env.local` (gitignored, nunca se copia a la imagen — ver `.dockerignore`)
+con el mismo `DATABASE_URL` pero host `127.0.0.1`: Bun carga `.env.local` con
+más precedencia que `.env` de forma nativa en invocaciones directas como esta,
+sin código adicional. (`db:pull` no depende de esto — ver arriba.)
 
 ## Contenedor
 
@@ -58,6 +78,19 @@ incluye `--force-recreate`.
 
 `DATABASE_URL` en `.env` (el que usa el contenedor) debe apuntar a `rebusque-db:5432`
 (nombre del contenedor de Postgres, resuelto vía DNS de la red `rebusque-net`).
+
+**Bugfix de higiene (18-sep-2026)**: no existía `.dockerignore`. El `Containerfile`
+hace `bun install --production` en el stage `deps` (correcto), pero el stage
+`runner` hacía `COPY . .` **desde el contexto del host**, que incluía el
+`node_modules` completo local (con devDependencies) y `.env`/`.env.local` —
+sobreescribía el `node_modules` de producción y horneaba secretos y
+herramientas de desarrollo dentro de la imagen final. Se agregó
+`.dockerignore` (excluye `node_modules`, `.git`, `.env`, `.env.local`,
+`.env.*.local`, `*.log`, `dist`); verificado tras `bun run deploy`: `.env` y
+`drizzle-kit` ya no existen dentro del contenedor corriendo, `/health` sigue
+`ok`. `DATABASE_URL` sigue llegando bien porque `env_file:` de
+`docker-compose.yml` lo inyecta en runtime, no depende de que el archivo esté
+horneado en la imagen.
 
 ## Autenticación: tokens opacos, no JWT
 

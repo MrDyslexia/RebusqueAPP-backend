@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "bun run --watch src/server.ts",
     "start": "bun run src/server.ts",
-    "db:pull": "drizzle-kit pull && bun run scripts/fix-bytea.ts",
+    "db:pull": "bun run scripts/db-pull.ts",
     "seed:admin": "bun run scripts/seed-admin.ts",
     "typecheck": "tsc --noEmit",
     "deploy": "bash scripts/deploy.sh"
