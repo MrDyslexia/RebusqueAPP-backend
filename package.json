@@ -8,6 +8,9 @@
     "start": "bun run src/server.ts",
     "db:pull": "bun run scripts/db-pull.ts",
     "seed:admin": "bun run scripts/seed-admin.ts",
+    "seed:simulacion": "bun run scripts/seed-simulacion-conductores.ts",
+    "simular:posiciones": "bun run scripts/simular-posiciones.ts",
+    "limpiar:simulacion": "bun run scripts/limpiar-simulacion-conductores.ts",
     "typecheck": "tsc --noEmit",
     "deploy": "bash scripts/deploy.sh"
   },
