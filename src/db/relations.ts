@@ -1,15 +1,18 @@
 import { relations } from "drizzle-orm/relations";
 import { usuarios, sesiones, dispositivos, passwordResetTokens, dispositivosHistorial, turnos, sucursales, encomiendas, encomiendaEstadoHistorial, reportesEntregaFallida, posicionesConductor, notificacionesLog } from "./schema";
 
-export const usuariosRelations = relations(usuarios, ({one, many}) => ({
+export const sesionesRelations = relations(sesiones, ({one}) => ({
 	usuario: one(usuarios, {
-		fields: [usuarios.creadoPor],
-		references: [usuarios.id],
-		relationName: "usuarios_creadoPor_usuarios_id"
+		fields: [sesiones.usuarioId],
+		references: [usuarios.id]
 	}),
-	usuarios: many(usuarios, {
-		relationName: "usuarios_creadoPor_usuarios_id"
+	dispositivo: one(dispositivos, {
+		fields: [sesiones.dispositivoId],
+		references: [dispositivos.id]
 	}),
+}));
+
+export const usuariosRelations = relations(usuarios, ({one, many}) => ({
 	sesiones: many(sesiones),
 	passwordResetTokens: many(passwordResetTokens),
 	dispositivos: many(dispositivos),
@@ -28,16 +31,13 @@ export const usuariosRelations = relations(usuarios, ({one, many}) => ({
 	reportesEntregaFallidas: many(reportesEntregaFallida),
 	posicionesConductors: many(posicionesConductor),
 	notificacionesLogs: many(notificacionesLog),
-}));
-
-export const sesionesRelations = relations(sesiones, ({one}) => ({
 	usuario: one(usuarios, {
-		fields: [sesiones.usuarioId],
-		references: [usuarios.id]
+		fields: [usuarios.creadoPor],
+		references: [usuarios.id],
+		relationName: "usuarios_creadoPor_usuarios_id"
 	}),
-	dispositivo: one(dispositivos, {
-		fields: [sesiones.dispositivoId],
-		references: [dispositivos.id]
+	usuarios: many(usuarios, {
+		relationName: "usuarios_creadoPor_usuarios_id"
 	}),
 }));
 

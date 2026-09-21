@@ -68,3 +68,10 @@ export function fechaEnZona(zona: string = TIMEZONE, referencia: Date = new Date
   const { anio, mes, dia } = obtenerPartesEnZona(referencia, zona);
   return `${anio}-${String(mes).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
 }
+
+/** Hora del dia (HH:MM:SS) de `referencia` vista en `zona`. Comparable como
+ * string contra columnas `time` de Postgres (formato fijo, cero-rellenado). */
+export function horaEnZona(zona: string = TIMEZONE, referencia: Date = new Date()): string {
+  const { hora, minuto, segundo } = obtenerPartesEnZona(referencia, zona);
+  return `${String(hora).padStart(2, "0")}:${String(minuto).padStart(2, "0")}:${String(segundo).padStart(2, "0")}`;
+}

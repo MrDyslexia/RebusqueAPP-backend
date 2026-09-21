@@ -83,6 +83,9 @@ export async function listarUsuarios(rol?: Rol) {
     segundoApellido: usuarios.segundoApellido,
     rol: usuarios.rol,
     activo: usuarios.activo,
+    // Solo tiene sentido para rol 'ejecutivo'; en el resto de los roles
+    // siempre viaja `false` (default de columna) y no se usa.
+    accesoSeguimientoBloqueado: usuarios.accesoSeguimientoBloqueado,
     createdAt: usuarios.createdAt,
   };
 
@@ -144,4 +147,34 @@ export async function cambiarEmailDeUsuario(actor: AuthUser, usuarioId: number, 
     .where(eq(usuarios.id, usuarioId));
 
   return { id: usuarioId, email: newEmail };
+}
+
+// "administrador puede bloquear el acceso de los ejecutivos al seguimiento
+// en tiempo real (permiso configurable, no es fijo)" (backend.md, post-MVP
+// seguimiento en tiempo real). Solo aplica a rol 'ejecutivo' -- el
+// administrador siempre ve el seguimiento, no tiene sentido bloquearlo a
+// si mismo; conductor/cliente no consumen ese endpoint en absoluto.
+export async function actualizarAccesoSeguimiento(actor: AuthUser, usuarioId: number, bloqueado: boolean) {
+  requireAdmin(actor);
+
+  const [usuario] = await db
+    .select({ id: usuarios.id, rol: usuarios.rol })
+    .from(usuarios)
+    .where(eq(usuarios.id, usuarioId))
+    .limit(1);
+  if (!usuario) throw Errors.notFound("Usuario");
+  if (usuario.rol !== "ejecutivo") {
+    throw new AppError(
+      400,
+      "acceso_seguimiento_no_aplica",
+      "El bloqueo de seguimiento en tiempo real solo aplica a usuarios con rol ejecutivo"
+    );
+  }
+
+  await db
+    .update(usuarios)
+    .set({ accesoSeguimientoBloqueado: bloqueado, updatedAt: new Date().toISOString() })
+    .where(eq(usuarios.id, usuarioId));
+
+  return { id: usuarioId, accesoSeguimientoBloqueado: bloqueado };
 }

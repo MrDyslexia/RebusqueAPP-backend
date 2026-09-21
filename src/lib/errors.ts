@@ -30,4 +30,6 @@ export const Errors = {
     new AppError(403, "not_assigned_conductor", "No es el conductor asignado a esta encomienda"),
   retiroNoRequerido: () =>
     new AppError(409, "retiro_no_requerido", "Esta encomienda no tiene direccion de retiro"),
+  posicionDemasiadoFrecuente: () =>
+    new AppError(429, "posicion_demasiado_frecuente", "Esperá al menos 1 segundo entre envios de posicion"),
 };

@@ -1,4 +1,4 @@
-import { pgTable, index, foreignKey, unique, bigint, varchar, text, boolean, timestamp, check, date, time, uniqueIndex, smallint, numeric, pgEnum } from "drizzle-orm/pg-core"
+import { pgTable, index, foreignKey, unique, bigint, text, timestamp, check, date, time, varchar, boolean, uniqueIndex, smallint, numeric, pgEnum } from "drizzle-orm/pg-core"
 import { sql } from "drizzle-orm"
 import { bytea } from "./custom-types.js"
 
@@ -9,34 +9,6 @@ export const formaPago = pgEnum("forma_pago", ['transferencia', 'debito', 'credi
 export const rolUsuario = pgEnum("rol_usuario", ['cliente', 'conductor', 'ejecutivo', 'administrador'])
 export const tipoDocumento = pgEnum("tipo_documento", ['boleta', 'factura'])
 
-
-export const usuarios = pgTable("usuarios", {
-	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
-	id: bigint({ mode: "number" }).primaryKey().generatedAlwaysAsIdentity({ name: "usuarios_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
-	rut: varchar({ length: 12 }).notNull(),
-	passwordHash: text("password_hash").notNull(),
-	email: varchar({ length: 255 }).notNull(),
-	primerNombre: varchar("primer_nombre", { length: 80 }),
-	segundoNombre: varchar("segundo_nombre", { length: 80 }),
-	primerApellido: varchar("primer_apellido", { length: 80 }),
-	segundoApellido: varchar("segundo_apellido", { length: 80 }),
-	rol: rolUsuario().notNull(),
-	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
-	creadoPor: bigint("creado_por", { mode: "number" }),
-	activo: boolean().default(true).notNull(),
-	accesoSeguimientoBloqueado: boolean("acceso_seguimiento_bloqueado").default(false).notNull(),
-	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
-}, (table) => [
-	index("idx_usuarios_rol").using("btree", table.rol.asc().nullsLast().op("enum_ops")),
-	foreignKey({
-			columns: [table.creadoPor],
-			foreignColumns: [table.id],
-			name: "usuarios_creado_por_fkey"
-		}),
-	unique("usuarios_rut_key").on(table.rut),
-	unique("usuarios_email_key").on(table.email),
-]);
 
 export const sesiones = pgTable("sesiones", {
 	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
@@ -313,4 +285,32 @@ export const notificacionesLog = pgTable("notificaciones_log", {
 			foreignColumns: [encomiendas.id],
 			name: "notificaciones_log_encomienda_id_fkey"
 		}),
+]);
+
+export const usuarios = pgTable("usuarios", {
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	id: bigint({ mode: "number" }).primaryKey().generatedAlwaysAsIdentity({ name: "usuarios_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 9223372036854775807, cache: 1 }),
+	rut: varchar({ length: 12 }).notNull(),
+	passwordHash: text("password_hash").notNull(),
+	email: varchar({ length: 255 }).notNull(),
+	rol: rolUsuario().notNull(),
+	// You can use { mode: "bigint" } if numbers are exceeding js number limitations
+	creadoPor: bigint("creado_por", { mode: "number" }),
+	activo: boolean().default(true).notNull(),
+	accesoSeguimientoBloqueado: boolean("acceso_seguimiento_bloqueado").default(false).notNull(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	primerNombre: varchar("primer_nombre", { length: 80 }),
+	segundoNombre: varchar("segundo_nombre", { length: 80 }),
+	primerApellido: varchar("primer_apellido", { length: 80 }),
+	segundoApellido: varchar("segundo_apellido", { length: 80 }),
+}, (table) => [
+	index("idx_usuarios_rol").using("btree", table.rol.asc().nullsLast().op("enum_ops")),
+	foreignKey({
+			columns: [table.creadoPor],
+			foreignColumns: [table.id],
+			name: "usuarios_creado_por_fkey"
+		}),
+	unique("usuarios_rut_key").on(table.rut),
+	unique("usuarios_email_key").on(table.email),
 ]);

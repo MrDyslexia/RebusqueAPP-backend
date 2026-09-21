@@ -12,6 +12,8 @@ export interface AuthUser {
   email: string;
   rol: "cliente" | "conductor" | "ejecutivo" | "administrador";
   sesionId: number;
+  primerNombre: string | null;
+  primerApellido: string | null;
 }
 
 declare module "fastify" {
@@ -35,6 +37,8 @@ export async function resolveUserFromToken(rawToken: string): Promise<AuthUser |
       email: usuarios.email,
       rol: usuarios.rol,
       activo: usuarios.activo,
+      primerNombre: usuarios.primerNombre,
+      primerApellido: usuarios.primerApellido,
     })
     .from(sesiones)
     .innerJoin(usuarios, eq(sesiones.usuarioId, usuarios.id))
@@ -52,6 +56,8 @@ export async function resolveUserFromToken(rawToken: string): Promise<AuthUser |
     email: row.email,
     rol: row.rol,
     sesionId: row.sesionId,
+    primerNombre: row.primerNombre,
+    primerApellido: row.primerApellido,
   };
 }
 

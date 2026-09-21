@@ -10,6 +10,8 @@ import { usuariosRoutes } from "./modules/usuarios/usuarios.routes.js";
 import { encomiendasRoutes } from "./modules/encomiendas/encomiendas.routes.js";
 import { sucursalesRoutes } from "./modules/sucursales/sucursales.routes.js";
 import { turnosRoutes } from "./modules/turnos/turnos.routes.js";
+import { posicionesRoutes } from "./modules/posiciones/posiciones.routes.js";
+import { purgarPosicionesAntiguas } from "./modules/posiciones/posiciones.service.js";
 import { AppError } from "./lib/errors.js";
 import { resolveUserFromToken } from "./plugins/auth.js";
 import { registerConnection } from "./realtime/broadcaster.js";
@@ -54,6 +56,7 @@ await app.register(usuariosRoutes);
 await app.register(encomiendasRoutes);
 await app.register(sucursalesRoutes);
 await app.register(turnosRoutes);
+await app.register(posicionesRoutes);
 
 // Sincronizacion en tiempo real (backend.md): mantiene sincronizados todos
 // los clientes conectados ante cambios de estado/asignacion de encomiendas.
@@ -84,6 +87,24 @@ app.get(
 try {
   await app.listen({ port: env.PORT, host: env.HOST });
   app.log.info(`RebusqueApp backend escuchando en ${env.HOST}:${env.PORT}`);
+
+  // Retencion de posiciones (14 dias, ver posiciones.service.ts): in-process,
+  // sin cron ni infra externa -- corre una vez poco despues de bootear y
+  // despues cada 24h mientras el proceso siga vivo. Si el backend llegara a
+  // correr en mas de una replica, cada una dispara su propio DELETE
+  // (idempotente por el WHERE de fecha, solo trabajo duplicado, no corrompe
+  // nada) -- aceptable a la escala de un solo contenedor backend actual.
+  const PURGA_INTERVALO_MS = 24 * 60 * 60 * 1000;
+  async function ejecutarPurgaPosiciones() {
+    try {
+      const borradas = await purgarPosicionesAntiguas();
+      if (borradas > 0) app.log.info(`Purga de posiciones: ${borradas} filas borradas (>14 dias)`);
+    } catch (err) {
+      app.log.error(err, "Fallo la purga periodica de posiciones");
+    }
+  }
+  setTimeout(ejecutarPurgaPosiciones, 60_000);
+  setInterval(ejecutarPurgaPosiciones, PURGA_INTERVALO_MS);
 } catch (err) {
   app.log.error(err);
   process.exit(1);

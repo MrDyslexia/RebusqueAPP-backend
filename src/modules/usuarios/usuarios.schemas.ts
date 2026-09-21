@@ -32,3 +32,7 @@ export const cambiarEmailUsuarioBodySchema = z.object({
 export const listarUsuariosQuerySchema = z.object({
   rol: rolUsuarioSchema.optional(),
 });
+
+export const actualizarAccesoSeguimientoBodySchema = z.object({
+  bloqueado: z.boolean(),
+});

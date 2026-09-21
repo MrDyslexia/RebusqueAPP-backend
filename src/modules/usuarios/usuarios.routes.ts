@@ -5,12 +5,14 @@ import {
   forzarResetPasswordBodySchema,
   cambiarEmailUsuarioBodySchema,
   listarUsuariosQuerySchema,
+  actualizarAccesoSeguimientoBodySchema,
 } from "./usuarios.schemas.js";
 import {
   crearUsuario,
   forzarResetPassword,
   cambiarEmailDeUsuario,
   listarUsuarios,
+  actualizarAccesoSeguimiento,
 } from "./usuarios.service.js";
 
 const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
@@ -54,6 +56,20 @@ export async function usuariosRoutes(app: FastifyInstance) {
       const { id } = idParamSchema.parse(request.params);
       const body = cambiarEmailUsuarioBodySchema.parse(request.body);
       const result = await cambiarEmailDeUsuario(request.user!, id, body.newEmail);
+      return reply.send(result);
+    }
+  );
+
+  // Bloquea/desbloquea el acceso de un ejecutivo al seguimiento en tiempo
+  // real (GET /posiciones/ultimas + broadcast WS). Solo aplica a rol
+  // ejecutivo, ver usuarios.service.ts.
+  app.patch(
+    "/usuarios/:id/acceso-seguimiento",
+    { preHandler: [app.authenticate, app.requireRole("administrador")] },
+    async (request, reply) => {
+      const { id } = idParamSchema.parse(request.params);
+      const body = actualizarAccesoSeguimientoBodySchema.parse(request.body);
+      const result = await actualizarAccesoSeguimiento(request.user!, id, body.bloqueado);
       return reply.send(result);
     }
   );
