@@ -1,21 +1,15 @@
 // Deshace el ruido dejado por simular-posiciones.ts en el mapa real de
-// /seguimiento: borra las posiciones de los 5 conductores de prueba y
-// desactiva (activo=false, mismo patron soft-delete que sucursales) SOLO
-// los que este mismo flujo de simulacion creo de cero -- los que ya
-// existian antes (ver seed-simulacion-conductores.ts, log "Reseteado:")
-// se dejan activos porque pueden estar en uso por otros datos de prueba
-// (turnos, encomiendas asignadas); a esos dos unicamente se les toco la
-// password, no el estado.
+// /seguimiento: borra las posiciones de los 5 conductores de prueba y los
+// desactiva (activo=false, mismo patron soft-delete que sucursales). Los 5
+// RUTs son 100% sinteticos (ver simulacion-conductores.data.ts) y exclusivos
+// de este flujo, asi que siempre es seguro desactivarlos a los 5 sin
+// distincion.
 //
 // Uso: bun run limpiar:simulacion
-import { eq, inArray } from "drizzle-orm";
+import { inArray } from "drizzle-orm";
 import { db, pool } from "../src/db/index.js";
 import { posicionesConductor, usuarios } from "../src/db/schema.js";
 import { SIM_CONDUCTORES } from "./simulacion-conductores.data.js";
-
-// Coinciden con los "Creado:" del ultimo run de seed-simulacion-conductores.ts
-// (los dos primeros, 30111222-K/30222333-5, ya existian antes de este flujo).
-const RUTS_CREADOS_POR_SIMULACION = SIM_CONDUCTORES.slice(2).map((c) => c.rut);
 
 async function main() {
   const ids = await db
@@ -41,23 +35,8 @@ async function main() {
     .returning({ id: posicionesConductor.id });
   console.log(`Posiciones borradas: ${borradas.length}`);
 
-  const idsADesactivar = ids
-    .filter((u) => RUTS_CREADOS_POR_SIMULACION.includes(u.rut))
-    .map((u) => u.id);
-
-  if (idsADesactivar.length > 0) {
-    await db.update(usuarios).set({ activo: false }).where(inArray(usuarios.id, idsADesactivar));
-    console.log(`Desactivados (creados por la simulacion): ${idsADesactivar.join(", ")}`);
-  }
-
-  const dejados = ids.filter((u) => !RUTS_CREADOS_POR_SIMULACION.includes(u.rut));
-  if (dejados.length > 0) {
-    console.log(
-      `Sin tocar estado (ya existian antes, solo tenian password reseteada): ${dejados
-        .map((u) => u.rut)
-        .join(", ")}`
-    );
-  }
+  await db.update(usuarios).set({ activo: false }).where(inArray(usuarios.id, idsNumericos));
+  console.log(`Desactivados: ${ids.map((u) => u.rut).join(", ")}`);
 
   await pool.end();
 }
