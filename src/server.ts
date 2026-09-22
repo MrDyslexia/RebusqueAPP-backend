@@ -14,7 +14,7 @@ import { posicionesRoutes } from "./modules/posiciones/posiciones.routes.js";
 import { purgarPosicionesAntiguas } from "./modules/posiciones/posiciones.service.js";
 import { AppError } from "./lib/errors.js";
 import { resolveUserFromToken } from "./plugins/auth.js";
-import { registerConnection } from "./realtime/broadcaster.js";
+import { registerConnection, iniciarKeepAlive } from "./realtime/broadcaster.js";
 
 const app = Fastify({
   logger: true,
@@ -105,6 +105,11 @@ try {
   }
   setTimeout(ejecutarPurgaPosiciones, 60_000);
   setInterval(ejecutarPurgaPosiciones, PURGA_INTERVALO_MS);
+
+  // Keepalive de transporte WS (ver broadcaster.ts): sin esto, una conexion
+  // medio abierta (caida de red abrupta, proceso suspendido) queda en el
+  // registro de presencia para siempre porque socket.OPEN no lo detecta.
+  iniciarKeepAlive();
 } catch (err) {
   app.log.error(err);
   process.exit(1);

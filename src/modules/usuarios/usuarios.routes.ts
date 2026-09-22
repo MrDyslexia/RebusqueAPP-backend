@@ -18,6 +18,7 @@ import {
   listarEncomiendasCreadasPorEjecutivo,
   actualizarAccesoSeguimiento,
 } from "./usuarios.service.js";
+import { estaConectadoEnTiempoReal } from "../../realtime/broadcaster.js";
 
 const idParamSchema = z.object({ id: z.coerce.number().int().positive() });
 
@@ -28,7 +29,16 @@ export async function usuariosRoutes(app: FastifyInstance) {
     async (request, reply) => {
       const query = listarUsuariosQuerySchema.parse(request.query);
       const lista = await listarUsuarios(query.rol);
-      return reply.send({ usuarios: lista });
+      // Calculado aca, no en el service (que es puro SQL): es presencia en
+      // memoria del proceso (ver broadcaster.ts), no un dato de DB. Solo
+      // tiene sentido para conductor -- el resto de roles no reporta
+      // seguimiento en tiempo real, se deja sin el campo.
+      const conPresencia = lista.map((usuario) =>
+        usuario.rol === "conductor"
+          ? { ...usuario, realtimeConnected: estaConectadoEnTiempoReal(usuario.id) }
+          : usuario
+      );
+      return reply.send({ usuarios: conPresencia });
     }
   );
 

@@ -6,19 +6,104 @@ import type { AuthUser } from "../plugins/auth.js";
 
 // Registro en memoria de conexiones WS activas. Suficiente para un solo
 // proceso backend (MVP); si en el futuro se escala horizontalmente, esto
-// necesita moverse a un pub/sub externo (Redis, etc.).
+// necesita moverse a un pub/sub externo (Redis, etc.) -- mismo caveat ya
+// aceptado para el rate-limit de posiciones y el job de purga.
 interface Connection {
   socket: WebSocket;
   user: AuthUser;
+  // Keepalive de transporte (ver iniciarKeepAlive): true si respondio el
+  // ultimo ping. socket.OPEN por si solo no detecta una caida abrupta de
+  // red o un proceso suspendido -- el socket queda "medio abierto" sin
+  // disparar 'close'.
+  isAlive: boolean;
 }
 
 const connections = new Set<Connection>();
+// Presencia por usuario (no por socket): un mismo usuario puede tener mas
+// de una conexion (ej. dos pestañas de administrador). "Conectado" es
+// tener AL MENOS una, y el evento de presencia solo debe salir en la
+// transicion 0->1 / 1->0, nunca por cada socket individual.
+const connectionsByUser = new Map<number, Set<Connection>>();
 
 export function registerConnection(socket: WebSocket, user: AuthUser) {
-  const conn: Connection = { socket, user };
+  const conn: Connection = { socket, user, isAlive: true };
   connections.add(conn);
-  socket.once("close", () => connections.delete(conn));
+
+  let deEsteUsuario = connectionsByUser.get(user.id);
+  if (!deEsteUsuario) {
+    deEsteUsuario = new Set();
+    connectionsByUser.set(user.id, deEsteUsuario);
+  }
+  const eraCero = deEsteUsuario.size === 0;
+  deEsteUsuario.add(conn);
+  if (eraCero) broadcastConexionActualizada(user.id, true);
+
+  socket.on("pong", () => {
+    conn.isAlive = true;
+  });
+
+  socket.once("close", () => {
+    connections.delete(conn);
+    const restantes = connectionsByUser.get(user.id);
+    if (!restantes) return;
+    restantes.delete(conn);
+    if (restantes.size === 0) {
+      connectionsByUser.delete(user.id);
+      broadcastConexionActualizada(user.id, false);
+    }
+  });
+
   return conn;
+}
+
+/**
+ * "Sesion en tiempo real conectada" para un usuario: tiene el WS abierto en
+ * ESTE proceso, no implica nada sobre GPS ni sobre que dispositivo fisico
+ * es (ver usuarios.routes.ts, campo `realtimeConnected`).
+ */
+export function estaConectadoEnTiempoReal(usuarioId: number): boolean {
+  return connectionsByUser.has(usuarioId);
+}
+
+// Keepalive de transporte (patron documentado por la libreria `ws`): cada
+// KEEPALIVE_INTERVALO_MS se pinguea cada conexion viva; si no respondio el
+// pong anterior (isAlive seguia en false desde el tick previo), se
+// considera muerta y se fuerza el cierre. Deteccion en como maximo 2 ciclos
+// (~60s con el intervalo por defecto) de una caida que socket.OPEN por si
+// solo no ve -- red cortada abruptamente, proceso del cliente suspendido,
+// etc. El 'close' que dispara terminate() reusa la misma limpieza de
+// registerConnection, asi que la transicion 1->0 sale igual.
+const KEEPALIVE_INTERVALO_MS = 30_000;
+
+export function iniciarKeepAlive() {
+  setInterval(() => {
+    for (const conn of connections) {
+      if (!conn.isAlive) {
+        conn.socket.terminate();
+        continue;
+      }
+      conn.isAlive = false;
+      conn.socket.ping();
+    }
+  }, KEEPALIVE_INTERVALO_MS);
+}
+
+function broadcastConexionActualizada(usuarioId: number, conectado: boolean) {
+  // A diferencia de posicion_actualizada, esto NO respeta
+  // acceso_seguimiento_bloqueado: ese permiso protege coordenadas GPS y el
+  // mapa de /seguimiento; la presencia WS es informacion operativa del
+  // panel de Usuarios, un concern distinto.
+  const payload = JSON.stringify({
+    type: "realtime_conexion_actualizada",
+    data: { usuarioId, conectado },
+  });
+
+  for (const conn of connections) {
+    if (conn.socket.readyState !== conn.socket.OPEN) continue;
+    if (conn.user.rol === "administrador" || conn.user.rol === "ejecutivo") {
+      conn.socket.send(payload);
+    }
+  }
 }
 
 export interface EncomiendaBroadcastPayload {
