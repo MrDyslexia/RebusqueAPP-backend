@@ -11,6 +11,8 @@ import { encomiendasRoutes } from "./modules/encomiendas/encomiendas.routes.js";
 import { sucursalesRoutes } from "./modules/sucursales/sucursales.routes.js";
 import { turnosRoutes } from "./modules/turnos/turnos.routes.js";
 import { posicionesRoutes } from "./modules/posiciones/posiciones.routes.js";
+import { registrarPosicionBodySchema } from "./modules/posiciones/posiciones.schemas.js";
+import { registrarPosicion } from "./modules/posiciones/posiciones.service.js";
 import { purgarPosicionesAntiguas } from "./modules/posiciones/posiciones.service.js";
 import { AppError } from "./lib/errors.js";
 import { resolveUserFromToken } from "./plugins/auth.js";
@@ -81,6 +83,18 @@ app.get(
   (socket, request) => {
     registerConnection(socket, request.user!);
     socket.send(JSON.stringify({ type: "conectado", data: { userId: request.user!.id, rol: request.user!.rol } }));
+    socket.on("message", async (raw) => {
+      try {
+        const message = JSON.parse(raw.toString()) as { type?: unknown; data?: unknown };
+        if (message.type !== "posicion_actualizada") return;
+        const input = registrarPosicionBodySchema.parse(message.data);
+        const posicion = await registrarPosicion(request.user!, input);
+        socket.send(JSON.stringify({ type: "posicion_confirmada", data: { capturadoAt: posicion.capturadoAt } }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "No se pudo registrar la posición";
+        socket.send(JSON.stringify({ type: "posicion_rechazada", data: { message } }));
+      }
+    });
   }
 );
 
